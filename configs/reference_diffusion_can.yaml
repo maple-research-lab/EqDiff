@@ -1,0 +1,74 @@
+validation_data:
+  ref_prompt: 
+    - "photo of a can on the stone pillar"
+  style_prompt: 
+    - "photo of a can on the stone pillar"
+  ref_img_path: 
+    - "./data/can/00.jpg"
+  width: 512
+  height: 512
+  num_inference_steps: 50
+  guidance_scale: 12.5
+
+text_dds_list:
+  - text_source: 'photo of a <new2> can'
+    text_source_prior: 'photo of a can'
+    text_target: 'photo of a <new2> can'
+    text_target_prior: 'photo of a can' 
+  # - text_source: 'Sketch of a <new2> can'
+  #   text_source_prior: 'Sketch of a can'
+  #   text_target: 'photo of a <new2> can'
+  #   text_target_prior: 'photo of a can' 
+  # - text_source: 'Oil painting of a <new2> can'
+  #   text_source_prior: 'Oil painting of a can'
+  #   text_target: 'photo of a <new2> can'
+  #   text_target_prior: 'photo of a can'
+  # - text_source: 'photo of a <new2> can'
+  #   text_source_prior: 'photo of a can'
+  #   text_target: 'photo of a <new2> can'
+  #   text_target_prior: 'photo of a can' 
+
+
+
+num_objects_given: 1 #number of composition objects
+validation_num_objects: 1 #number of composition objects in validation
+unet_additional_kwargs:
+  use_our: false 
+  use_inflated_groupnorm: true
+  unet_use_cross_frame_attention: false
+  unet_use_temporal_attention: false
+
+  use_motion_module: false # 😊⭐
+  motion_module_resolutions:
+  - 1
+  - 2
+  - 4
+  - 8
+  motion_module_mid_block: true
+  motion_module_decoder_only: false
+  motion_module_type: Vanilla
+  motion_module_kwargs:
+    num_attention_heads: 8
+    num_transformer_block: 1
+    attention_block_types:
+    - Temporal_Self
+    - Temporal_Self
+    temporal_position_encoding: true
+    temporal_position_encoding_max_len: 32
+    temporal_attention_dim_div: 1
+
+# # Additional configs for controlnet
+# controlnet_kwargs:
+#   use_controlnet: false # 😊⭐
+#   pretrained_controlnet_path: ''
+#   conditioning_channels: 2
+
+# Additional configs for reference encoder
+ref_encoder_addition_kwargs:
+  use_reference_encoder: true # 😊⭐
+  pretrained_model_path: /qiguojun/PreTrainedWeights/stable-diffusion-v1-4
+  fusion_blocks: "midup"
+
+lora_reference_encoder_additional_kwargs:
+  use_lora: false # 😊⭐
+  lora_rank: 4
