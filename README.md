@@ -1,7 +1,8 @@
-# ___***Equilibrated Diffusion:Frequency-aware Textual Embedding for Equilibrated Image Customization***___
+# ___***Equilibrated Diffusion:Frequency-aware Textual Embedding for Equilibrated Image Customization [ACMMM2024 Oral]***___
 
 <a href='https://maple-aigc.github.io/EqDiff/'><img src='https://img.shields.io/badge/Project-Page-green'></a> 
-<a href='https://arxiv.org/abs/2308.06721'><img src='https://img.shields.io/badge/Technique-Report-red'></a> 
+<a href='https://openreview.net/forum?id=ERuypCHYvX'><img src='https://img.shields.io/badge/Paper-Accepted-Green
+'></a> 
 
 
 ---
@@ -30,10 +31,6 @@ Experimental results demonstrate that Equilibrated Diffusion surpasses other com
 ```
 # install diffusers
 pip install diffusers==0.21.4
-
-# install Eq-diff
-pip install xx
-
 
 ```
 
