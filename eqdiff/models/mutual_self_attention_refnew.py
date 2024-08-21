@@ -16,7 +16,7 @@ from einops import rearrange
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from diffusers.models.attention import BasicTransformerBlock
-from lamp.models.attention import BasicTransformerBlock as _BasicTransformerBlock
+from eqdiff.models.attention import BasicTransformerBlock as _BasicTransformerBlock
 from diffusers.models.unet_2d_blocks import CrossAttnDownBlock2D, CrossAttnUpBlock2D, DownBlock2D, UpBlock2D
 #from .stable_diffusion_controlnet_reference import torch_dfs
 
@@ -129,6 +129,16 @@ class MutualSelfAttentionControl(AttentionBase):
         """
         return super().forward(q, k, v, sim, attn, is_cross, place_in_unet, num_heads, **kwargs)
 
+def adain(x, style):
+    # x [b, l, c]
+    # style [b, l, c]
+    eps = 1e-6
+    var, mean = torch.var_mean(x, dim=(1), keepdim=True, correction=0)
+    std = torch.maximum(var, torch.zeros_like(var) + eps) ** 0.5
+    var_s, mean_s = torch.var_mean(style, dim=(1), keepdim=True, correction=0)
+    std_s = torch.maximum(var_s, torch.zeros_like(var_s) + eps) ** 0.5
+    out = (((x - mean) / std) * std_s) + mean_s
+    return out
 
 class ReferenceAttentionControl():
     
@@ -237,13 +247,18 @@ class ReferenceAttentionControl():
             else:
                 if MODE == "write":
                     #print(f'writing:{norm_hidden_states.shape}, {norm_hidden_states.requires_grad}, {norm_hidden_states.grad_fn}')
-                    self.bank.append(norm_hidden_states.clone())
+                    norm_hidden_states_fore, norm_hidden_states_back = norm_hidden_states.chunk(2)
+                    self.bank.append(norm_hidden_states_fore.clone())
+                    self.refbank.append(norm_hidden_states_back.clone())
                     attn_output = self.attn1(
                         norm_hidden_states,
                         encoder_hidden_states=encoder_hidden_states if self.only_cross_attention else None,
                         attention_mask=attention_mask,
                         **cross_attention_kwargs,
                     )
+                    attn_output_fore, attn_output_back = attn_output.chunk(2)
+                    #self.refbank.append(attn_output_back.clone()) # maybe extract from after layer
+
                 if MODE == "read":
                     assert num_objects is not None
                     # if len(self.bank) > 0:
@@ -254,13 +269,27 @@ class ReferenceAttentionControl():
                     def fn_back(bank):
                         return [rearrange(d, "(b t) (f l) c -> (b f) t l c", f=num_objects, t=video_length)[:,0] for d in bank]
                     self.bank = fn_new(self.bank)
-                    hidden_states_uc = self.attn1(norm_hidden_states, 
-                                                encoder_hidden_states=norm_hidden_states,
-                                                res_states=torch.cat(self.bank, dim=1) if len(self.bank) > 0 else None,
+                    self.refbank = fn_new(self.refbank)
+                    res_states = torch.cat(self.bank, dim=1) if len(self.bank) > 0 else None
+
+                    # style-alignment
+                    kv_norm_hidden_states = norm_hidden_states
+                    # if res_states is not None and len(self.refbank) > 0:
+                    #     # res_states = adain(x=res_states, style=torch.cat(self.refbank, dim=1))
+                    #     kv_norm_hidden_states = adain(x=norm_hidden_states, style=torch.cat(self.refbank, dim=1))
+                    #     # kv_norm_hidden_states = norm_hidden_states
+                    # else:
+                    #     kv_norm_hidden_states = norm_hidden_states
+
+                    attn_output = self.attn1(norm_hidden_states, 
+                                                encoder_hidden_states=kv_norm_hidden_states,
+                                                res_states=res_states,
                                                 ref_input_mask=self.ref_input_mask,
                                                 ref_output_mask=self.ref_output_mask,
-                                                attention_mask=attention_mask) + hidden_states
-
+                                                attention_mask=attention_mask)
+                    # if len(self.refbank) > 0:
+                    #     attn_output = adain(x=attn_output, style=torch.cat(self.refbank, dim=1))
+                    hidden_states_uc = attn_output + hidden_states
                     #self.bank = fn_back(self.bank)
                     
                     hidden_states_c = hidden_states_uc.clone()
@@ -275,14 +304,19 @@ class ReferenceAttentionControl():
                         hidden_states_c[_uc_mask] = self.attn1(
                             norm_hidden_states[_uc_mask],
                             encoder_hidden_states=norm_hidden_states[_uc_mask],
-                            res_states=torch.cat(self.bank, dim=1)[_uc_mask] if len(self.bank) > 0 else None,
+                            res_states=res_states[_uc_mask] if len(self.bank) > 0 else None,
                             attention_mask=attention_mask,
                             ref_input_mask=self.ref_input_mask[_uc_mask] if self.ref_input_mask is not None else None,
                             ref_output_mask=self.ref_output_mask[_uc_mask] if self.ref_output_mask is not None else None,
                             save_attention_map=False,# to consistent with default p2p attention saving number (one for each self-attention)
                         ) + hidden_states[_uc_mask]
                     hidden_states = hidden_states_c.clone()
+                    
+                    # fuse the back
+                    #hidden_states = mask * hidden_states + (1-mask) * self.refbank
+
                     self.bank = fn_back(self.bank)  
+                    self.refbank = fn_back(self.refbank)
                     # if len(self.bank) > 0: 
                     #     print(f'bank back:{self.bank[0].shape}, {self.bank[0].requires_grad}, {self.bank[0].grad_fn}')
                     #self.bank.clear()
@@ -570,6 +604,7 @@ class ReferenceAttentionControl():
                 module._original_inner_forward = module.forward
                 module.forward = hacked_basic_transformer_inner_forward.__get__(module, BasicTransformerBlock)
                 module.bank = []
+                module.refbank = []
                 module.attn_weight = float(i) / float(len(attn_modules))
                 if MODE == 'read':
                     module.ref_input_mask = None
@@ -595,6 +630,7 @@ class ReferenceAttentionControl():
             writer_attn_modules = sorted(writer_attn_modules, key=lambda x: -x.norm1.normalized_shape[0])
             for r, w in zip(reader_attn_modules, writer_attn_modules):
                 r.bank = [v.clone().to(dtype) for v in w.bank]
+                r.refbank = [v.clone().to(dtype) for v in w.refbank]
                 if ref_input_mask is not None:
                     r.ref_input_mask = ref_input_mask
                 if ref_output_mask is not None:
@@ -611,3 +647,4 @@ class ReferenceAttentionControl():
             reader_attn_modules = sorted(reader_attn_modules, key=lambda x: -x.norm1.normalized_shape[0])
             for r in reader_attn_modules:
                 r.bank.clear()
+                r.refbank.clear()

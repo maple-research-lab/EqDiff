@@ -38,7 +38,7 @@ from diffusers.utils import (
 )
 from diffusers.utils.import_utils import BACKENDS_MAPPING
 
-from lamp.models.attention_processor_custom import CustomDiffusionXFormersAttnProcessor, CustomDiffusionAttnProcessor
+from eqdiff.models.attention_processor_custom import CustomDiffusionXFormersAttnProcessor, CustomDiffusionAttnProcessor
 
 
 if is_transformers_available():

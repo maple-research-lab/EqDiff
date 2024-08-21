@@ -19,19 +19,12 @@ from diffusers import (
     UNet2DConditionModel,
 )
 
-from lamp.models.unet import UNet3DConditionModel
-from lamp.models.align_hook import MasksHook
-from lamp.util import save_videos_grid, ddim_inversion, load_weights_into_unet
-from lamp.pipelines.pipeline_lamp_multi_inj_refnew_difftextemb2 import LAMPPipeline
-from lamp.pipelines.pipeline_lamp_wo_reference_encoder import LAMPPipeline_wo_reference
-from lamp.tools import *
-# pipe = DiffusionPipeline.from_pretrained(
-#     "/home/notebook/code/group/maliyuan/diffusion_ckpts/stable-diffusion-v1-4", torch_dtype=torch.float16
-# ).to("cuda")
-# pipe.unet.load_attn_procs(
-#     "./checkpoints/man", weight_name="pytorch_custom_diffusion_weights.bin"
-# )
-# pipe.load_textual_inversion("./checkpoints/man", weight_name="<new1>.bin")
+from eqdiff.models.unet import UNet3DConditionModel
+from eqdiff.models.align_hook import MasksHook
+from eqdiff.util import save_videos_grid, ddim_inversion, load_weights_into_unet
+from eqdiff.pipelines.pipeline_eqdiff_multi_inj_refnew_difftextemb2 import EQDIFFPipeline
+from eqdiff.tools import *
+
 live_list = [
     "cat",
     "cat2",
@@ -165,7 +158,7 @@ def main(args):
             _module.__class__.__call__ = inj_forward_text
 
     # # with reference 
-    pipeline = LAMPPipeline.from_pretrained(
+    pipeline = EQDIFFPipeline.from_pretrained(
                             pretrained_model_path,
                             unet=unet,
                             text_encoder=text_encoder,
@@ -173,11 +166,6 @@ def main(args):
                             ).to("cuda")
     pipeline.scheduler = DDIMScheduler.from_pretrained(pretrained_model_path, subfolder="scheduler") 
 
-    # without reference
-    # pipeline = LAMPPipeline_wo_reference.from_pretrained(
-    #                             pretrained_model_path,
-    #                             unet=unet,
-    # ).to('cuda')
     weight_name = ("pytorch_custom_diffusion_weights.bin")
     pipeline.unet.load_attn_procs(pretrained_model_path, 
                                   weight_name=weight_name,

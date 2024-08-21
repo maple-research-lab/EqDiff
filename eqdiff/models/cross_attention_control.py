@@ -5,7 +5,7 @@ from einops import rearrange
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from diffusers.models.attention import BasicTransformerBlock
-from lamp.models.attention import BasicTransformerBlock as _BasicTransformerBlock
+from eqdiff.models.attention import BasicTransformerBlock as _BasicTransformerBlock
 
 def torch_dfs(model: torch.nn.Module):
     result = [model]

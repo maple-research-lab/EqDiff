@@ -21,7 +21,7 @@ from diffusers.schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from lamp.models.unet import UNet3DConditionModel
+from eqdiff.models.unet import UNet3DConditionModel
 
 T = torch.Tensor
 TN = Optional[T]

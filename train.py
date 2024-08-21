@@ -39,7 +39,6 @@ import torchvision.utils as TU
 from torchvision.utils import save_image
 import torchvision
 
-import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
@@ -72,7 +71,6 @@ from transformers.utils import (
     replace_return_docstrings,
 )
 from transformers.models.clip.configuration_clip import CLIPTextConfig
-
 from transformers.models.clip.modeling_clip import CLIP_TEXT_INPUTS_DOCSTRING
 from packaging import version
 if version.parse(transformers.__version__) > version.parse('4.32.0'):
@@ -80,24 +78,24 @@ if version.parse(transformers.__version__) > version.parse('4.32.0'):
 else:
     from transformers.models.clip.modeling_clip import _expand_mask
 
-from lamp.models import ptp_utils
-from lamp.models.ptp_utils import AttentionStore
+from eqdiff.models import ptp_utils
+from eqdiff.models.ptp_utils import AttentionStore
 
-from lamp.models.unet import UNet3DConditionModel
-from lamp.util import save_videos_grid, ddim_inversion, load_weights_into_unet
-from lamp.models.reference_encoder import AppearanceEncoderModel
-from lamp.models.controlnet import ControlNetModel
-from lamp.models.mutual_self_attention_refnew import ReferenceAttentionControl
-from lamp.pipelines.pipeline_lamp_multi_inj_refnew_difftextemb2 import LAMPPipeline
-# from lamp.models.attention_processor_custom import CustomDiffusionXFormersAttnProcessor, CustomDiffusionAttnProcessor
-from lamp.models.attention_processor_custom import CustomDiffusionXFormersAttnProcessor, CustomDiffusionAttnProcessor
-from lamp.models.align_hook import AlignLossHook, MasksHook
-from lamp.models.self_attention_loss import SALoss
+from eqdiff.models.unet import UNet3DConditionModel
+from eqdiff.util import save_videos_grid, ddim_inversion, load_weights_into_unet
+from eqdiff.models.reference_encoder import AppearanceEncoderModel
+from eqdiff.models.controlnet import ControlNetModel
+from eqdiff.models.mutual_self_attention_refnew import ReferenceAttentionControl
+from eqdiff.pipelines.pipeline_eqdiff_multi_inj_refnew_difftextemb2 import EQDIFFPipeline
+from eqdiff.models.attention_processor_custom import CustomDiffusionXFormersAttnProcessor, CustomDiffusionAttnProcessor
+from eqdiff.models.align_hook import AlignLossHook, MasksHook
+from eqdiff.models.self_attention_loss import SALoss
+from eqdiff.models.cross_attention_control import CrossAttentionControl
+from eqdiff.tools import *
 
 from dataloader.reference_diffusion_dataset import collate_fn, PromptDataset, ReferenceDiffusionDataset
 
-from lamp.models.cross_attention_control import CrossAttentionControl
-from lamp.tools import *
+
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.21.0")
 
@@ -1185,7 +1183,7 @@ def main(args):
                 # if accelerator.is_main_process:
                 #     output_dir_phase1 = os.path.join(args.output_dir, 'phase1')
                 #     os.makedirs(output_dir_phase1, exist_ok=True)
-                #     pipeline = LAMPPipeline.from_pretrained(
+                #     pipeline = EQDIFFPipeline.from_pretrained(
                 #                 args.pretrained_model_name_or_path,
                 #                 vae=vae, 
                 #                 text_encoder=accelerator.unwrap_model(text_encoder), 
@@ -1292,7 +1290,7 @@ def main(args):
                 # if accelerator.is_main_process:
                 #     output_dir_phase2 = os.path.join(args.output_dir, 'phase2')
                 #     os.makedirs(output_dir_phase2, exist_ok=True)
-                #     pipeline = LAMPPipeline.from_pretrained(
+                #     pipeline = EQDIFFPipeline.from_pretrained(
                 #                 args.pretrained_model_name_or_path,
                 #                 vae=vae, 
                 #                 text_encoder=accelerator.unwrap_model(text_encoder), 
@@ -1457,7 +1455,7 @@ def main(args):
                 # if accelerator.is_main_process:
                 #     output_dir_phase3 = os.path.join(args.output_dir, 'phase3')
                 #     os.makedirs(output_dir_phase3, exist_ok=True)
-                #     pipeline = LAMPPipeline.from_pretrained(
+                #     pipeline = EQDIFFPipeline.from_pretrained(
                 #                 args.pretrained_model_name_or_path,
                 #                 vae=vae, 
                 #                 text_encoder=accelerator.unwrap_model(text_encoder), 
@@ -1940,7 +1938,7 @@ def main(args):
                         print(f'after attention cal:{k}:{len(v)}')
 
                     # create pipeline
-                    pipeline = LAMPPipeline(
+                    pipeline = EQDIFFPipeline(
                         vae=vae, 
                         text_encoder=accelerator.unwrap_model(text_encoder), 
                         tokenizer=tokenizer, 
@@ -2069,7 +2067,7 @@ def main(args):
     # Save the custom diffusion layers
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
-        pipeline = LAMPPipeline.from_pretrained(
+        pipeline = EQDIFFPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     vae=vae, 
                     text_encoder=accelerator.unwrap_model(text_encoder), 
@@ -2085,7 +2083,7 @@ def main(args):
         # save woref model
         output_dir_woref = os.path.join(args.output_dir, 'woref')
         os.makedirs(output_dir_woref, exist_ok=True)
-        pipeline = LAMPPipeline.from_pretrained(
+        pipeline = EQDIFFPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     vae=vae, 
                     text_encoder=accelerator.unwrap_model(text_encoder), 
@@ -2110,7 +2108,7 @@ def main(args):
         final_inference = True
         if final_inference:
             unet = UNet3DConditionModel.from_pretrained_2d(args.output_dir, subfolder="unet", unet_additional_kwargs=unet_additional_kwargs)
-            pipeline = LAMPPipeline.from_pretrained(
+            pipeline = EQDIFFPipeline.from_pretrained(
                         args.output_dir,
                         unet=unet,
                     ).to(accelerator.device)

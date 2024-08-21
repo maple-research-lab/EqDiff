@@ -15,9 +15,9 @@ from math import sqrt
 from diffusers.utils import is_accelerate_available
 from packaging import version
 from transformers import CLIPTextModel, CLIPTokenizer, CLIPVisionModel
-from lamp.util import save_videos_grid, ddim_inversion
+from eqdiff.util import save_videos_grid, ddim_inversion
 
-from lamp.models.controlnet import ControlNetModel
+from eqdiff.models.controlnet import ControlNetModel
 
 from diffusers.configuration_utils import FrozenDict
 from diffusers.models import AutoencoderKL
@@ -37,11 +37,11 @@ from einops import rearrange
 
 from ..models.unet import UNet3DConditionModel
 
-from lamp.models.mutual_self_attention_refnew import ReferenceAttentionControl
-from lamp.models.reference_encoder import AppearanceEncoderModel
-from lamp.models.cross_attention_control import CrossAttentionControl
+from eqdiff.models.mutual_self_attention_refnew import ReferenceAttentionControl
+from eqdiff.models.reference_encoder import AppearanceEncoderModel
+from eqdiff.models.cross_attention_control import CrossAttentionControl
 
-from lamp.tools import *
+from eqdiff.tools import *
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -67,14 +67,14 @@ def adaptive_instance_normalization(content_feat, style_feat):
     return normalized_feat * style_std.expand(size) + style_mean.expand(size)
 
 @dataclass
-class LAMPPipelineOutput(BaseOutput):
+class EQDIFFPipelineOutput(BaseOutput):
     videos: Union[torch.Tensor, np.ndarray]
     image: Union[torch.Tensor, np.ndarray]
     ref_image_tensor: torch.Tensor
-    image_ref: Union[torch.Tensor, np.ndarray, None]
+    image_ref: Union[torch.Tensor, np.ndarray]
 
 
-class LAMPPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin):
+class EQDIFFPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin):
     _optional_components = []
 
     def __init__(
@@ -91,7 +91,7 @@ class LAMPPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMix
             EulerAncestralDiscreteScheduler,
             DPMSolverMultistepScheduler,
         ],
-        reference_encoder: Optional[AppearanceEncoderModel] = None,
+        reference_encoder: Union[AppearanceEncoderModel, None],
         controlnet: Optional[ControlNetModel] = None,
     ):
         super().__init__()
@@ -542,7 +542,7 @@ class LAMPPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMix
         inj_embeddings = self.freq2embeddings(
             freq_embeddings,
             batch_size,
-            torch.float32
+            torch.float32,
         )
         inj_index = self.text2injindex(prompt, self.placeholder_token)
         text_embeddings, text_index = self._encode_prompt(
@@ -630,14 +630,6 @@ class LAMPPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMix
                             negative_prompt=None
                         )
 
-                        style_text_embeddings, _ = self._encode_prompt(
-                            ref_prompt, 
-                            device, 
-                            num_videos_per_prompt, 
-                            do_classifier_free_guidance, 
-                            negative_prompt=None
-                        )
-
                         # Encode reference images
                         assert len(ref_img_path) == num_objects, f'Number of reference images ({len(ref_img_path)}) does not match number of objects ({num_objects})'
                         ref_latents = torch.cat([self.images2latents(np.array(Image.open(ref_img).convert('RGB').resize((width, height)))[None, :], latents_dtype).to(device) for ref_img in ref_img_path], dim=0)#(nobj*f,c,h,w)
@@ -656,7 +648,7 @@ class LAMPPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMix
                     noise_pred_ref = self.reference_encoder(
                                       reference_latent_input, 
                                       t, 
-                                      encoder_hidden_states=torch.cat([ref_text_embeddings, style_text_embeddings], 0),#torch.cat([ref_text_embeddings]*2), 
+                                      encoder_hidden_states=torch.cat([ref_text_embeddings]*2), #torch.cat([ref_text_embeddings]*2), 
                                       return_dict=True).sample
                     #print(f'timestep:{t}, reference_latent_input:{reference_latent_input.sum([1,2,3])}, encoder_hidden_states:{torch.cat([ref_text_embeddings, style_text_embeddings], 0).sum([1,2])}, noise_pred_ref:{noise_pred_ref.sum([1,2,3])}')
                     # print(f'noise_pred_ref:{noise_pred_ref.shape}')
@@ -713,15 +705,14 @@ class LAMPPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMix
         video = self.decode_latents(latents)
         image = rearrange(video, 'b c f h w -> (b f) c h w')
 
-        if use_reference_encoder:
-            video_style = self.decode_latents(style_latents_denoise.unsqueeze(2))
-            image_ref = rearrange(video_style, 'b c f h w -> (b f) c h w')
+        video_style = self.decode_latents(style_latents_denoise.unsqueeze(2))
+        image_ref = rearrange(video_style, 'b c f h w -> (b f) c h w')
 
         # Convert to tensor
         if output_type == "tensor":
             video = torch.from_numpy(video)
             image = torch.from_numpy(image)
-            image_ref = torch.from_numpy(image_ref) if use_reference_encoder else None
+            image_ref = torch.from_numpy(image_ref)
             
 
         if not return_dict:
@@ -729,4 +720,4 @@ class LAMPPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMix
 
         # ref_image_tensor = self.images2tensor(np.array(Image.open(ref_img).convert('RGB').resize((width, height)))[None, :], latents_dtype)
         ref_image_tensor = torch.cat([self.images2tensor(np.array(Image.open(ref_img).convert('RGB').resize((width, height)))[None, :], latents_dtype).to(device) for ref_img in ref_img_path], dim=0)#(nobj*f,c,h,w)
-        return LAMPPipelineOutput(videos=video, image=image, ref_image_tensor=ref_image_tensor, image_ref=image_ref)
+        return EQDIFFPipelineOutput(videos=video, image=image, ref_image_tensor=ref_image_tensor, image_ref=image_ref)

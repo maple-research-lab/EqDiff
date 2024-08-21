@@ -21,7 +21,7 @@ else:
     
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 #from diffusers.loaders import UNet2DConditionLoadersMixin
-from lamp.models.loader_our import UNet2DConditionLoadersMixin_our
+from eqdiff.models.loader_our import UNet2DConditionLoadersMixin_our
 
 from diffusers.utils import BaseOutput, logging
 from diffusers.models.embeddings import TimestepEmbedding, Timesteps

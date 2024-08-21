@@ -20,7 +20,7 @@ else:
     from diffusers.models.modeling_utils import ModelMixin
     #from diffusers.models.attention import Attention as CrossAttention, FeedForward, AdaLayerNorm
     from diffusers.models.attention import FeedForward, AdaLayerNorm
-    from lamp.models.orig_attention import CrossAttention # to use low level cross attention
+    from eqdiff.models.orig_attention import CrossAttention # to use low level cross attention
 
 from diffusers.utils import BaseOutput
 from diffusers.utils.import_utils import is_xformers_available
