@@ -1,12 +1,16 @@
 #!/bin/bash
-if [ -z "$PROJECT_ROOT" ]; then
-    export PROJECT_ROOT="/fangxueji/projects_archived/EqDiff"
-fi
+
+export PROJECT_ROOT="/maliyuan/video_projects/EqDiff"
+export CKP_ROOT="/qiguojun/home/Models"
+
 cd  $PROJECT_ROOT
 
-DATASET_NAME=${1:-"can"}
-PROMPT_NAME=${2:-"can"}
-INIT_TOKEN=${3:-"can"}
+# DATASET_NAME=${1:-"dog2"}
+# PROMPT_NAME=${2:-"dog"}
+# INIT_TOKEN=${3:-"dog"}
+DATASET_NAME=${1:-"cat_toy"}
+PROMPT_NAME=${2:-"cat toy"}
+INIT_TOKEN=${3:-"cat_toy"}
 guidance_scale=${4:-12.5}
 phase1_train_steps=${5:-0}
 phase2_train_steps=${6:-0}
@@ -14,12 +18,13 @@ phase3_train_steps=${7:-0}
 phase4_train_steps=${8:-600}
 dilate_iters=${9:-5}
 LF=${10:-0.1}
+
 HF=${11:-0.1}
 AllF=${12:-0.8}
 
-export SD14_PATH="/qiguojun/home/Models/CompVis/stable-diffusion-v1-4"
-export SD15_PATH="/qiguojun/home/Models/runwayml/stable-diffusion-v1-5"
-export CLIP_PATH="/qiguojun/home/Models/openai/clip-vit-large-patch14"
+export SD14_PATH="${CKP_ROOT}/CompVis/stable-diffusion-v1-4"
+export SD15_PATH="${CKP_ROOT}/runwayml/stable-diffusion-v1-5"
+export CLIP_PATH="${CKP_ROOT}/openai/clip-vit-large-patch14"
 export PATH_PREFIX="p1step$phase1_train_steps-p2step$phase2_train_steps-p3step$phase3_train_steps-p4step$phase4_train_steps-dilate_iters_$dilate_iters-Freq_$LF-$HF-$AllF-_"
 export OUTPUT_DIR="./checkpoints/${PATH_PREFIX}$DATASET_NAME"
 export INSTANCE_DIR="$PROJECT_ROOT/data/$DATASET_NAME"

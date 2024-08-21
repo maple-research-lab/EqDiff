@@ -1,12 +1,13 @@
 #!/bin/bash
-if [ -z "$PROJECT_ROOT" ]; then
-    export PROJECT_ROOT="/fangxueji/projects_archived/EqDiff"
-fi
+
+export PROJECT_ROOT="/maliyuan/video_projects/EqDiff"
+export CKP_ROOT="/qiguojun/home/Models"
+
 cd  $PROJECT_ROOT
 
-DATASET_NAME=${1:-"can"}
-PROMPT_NAME=${2:-"can"}
-INIT_TOKEN=${3:-"can"}
+DATASET_NAME=${1:-"cat_toy"}
+PROMPT_NAME=${2:-"cat toy"}
+INIT_TOKEN=${3:-"cat_toy"}
 guidance_scale=${4:-7.5}
 phase1_train_steps=${5:-0}
 phase2_train_steps=${6:-0}
@@ -18,7 +19,7 @@ HF=${11:-0.1}
 AllF=${12:-0.8}
 
 export PATH_PREFIX="p1step$phase1_train_steps-p2step$phase2_train_steps-p3step$phase3_train_steps-p4step$phase4_train_steps-dilate_iters_$dilate_iters-Freq_$LF-$HF-$AllF-_"
-export SD14_PATH="/qiguojun/home/Models/CompVis/stable-diffusion-v1-4"
+export SD14_PATH="${CKP_ROOT}/CompVis/stable-diffusion-v1-4"
 
 # style mode
 accelerate launch test.py \

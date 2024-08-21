@@ -12,8 +12,6 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
-import inspect
-import datetime
 import argparse
 import hashlib
 import itertools
@@ -21,30 +19,26 @@ import json
 import logging
 import math
 import os
-import os.path as osp
 import random
 import shutil
 import warnings
 from pathlib import Path
-from einops import rearrange, repeat
-from PIL import ImageFilter
+from einops import rearrange
+import cv2
+import numpy as np
+from typing import List, Optional, Tuple, Union
+import matplotlib.pyplot as plt
+
+import safetensors
+import torch
+import torch.nn.functional as F
+import torch.utils.checkpoint
 import torchvision.transforms.functional as TF
 import torchvision.utils as T
 import torchvision.utils as TU
 from torchvision.utils import save_image
 import torchvision
-import cv2
-from typing import List, Optional, Tuple, Union
-import matplotlib.pyplot as plt
 
-
-import numpy as np
-import safetensors
-import torch
-import torch.nn.functional as F
-import torch.fft as fft
-import torch.nn as nn
-import torch.utils.checkpoint
 import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
@@ -52,11 +46,8 @@ from accelerate.utils import ProjectConfiguration, set_seed
 from huggingface_hub import HfApi, create_repo
 from packaging import version
 from PIL import Image
-from torch.utils.data import Dataset
-from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
-from collections import defaultdict
 from omegaconf import OmegaConf
 
 import diffusers
@@ -74,17 +65,20 @@ from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
+import transformers
 from transformers.modeling_outputs import BaseModelOutputWithPooling
 from transformers.utils import (
     add_start_docstrings_to_model_forward,
     replace_return_docstrings,
 )
-from transformers import CLIPVisionModel
 from transformers.models.clip.configuration_clip import CLIPTextConfig
-from transformers.models.clip.modeling_clip import CLIP_TEXT_INPUTS_DOCSTRING, _expand_mask
 
-import sys
-sys.path.insert(0, '/fangxueji/reference_diffusion')
+from transformers.models.clip.modeling_clip import CLIP_TEXT_INPUTS_DOCSTRING
+from packaging import version
+if version.parse(transformers.__version__) > version.parse('4.32.0'):
+    from transformers.modeling_attn_mask_utils import AttentionMaskConverter
+else:
+    from transformers.models.clip.modeling_clip import _expand_mask
 
 from lamp.models import ptp_utils
 from lamp.models.ptp_utils import AttentionStore
@@ -140,12 +134,7 @@ def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: st
 
     if model_class == "CLIPTextModel":
         from transformers import CLIPTextModel
-
         return CLIPTextModel
-    elif model_class == "RobertaSeriesModelWithTransformation":
-        from diffusers.pipelines.alt_diffusion.modeling_roberta_series import RobertaSeriesModelWithTransformation
-
-        return RobertaSeriesModelWithTransformation
     else:
         raise ValueError(f"{model_class} is not supported.")
 
@@ -682,7 +671,8 @@ def inj_forward_text(
     # expand attention_mask
     if attention_mask is not None:
         # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
-        attention_mask = _expand_mask(attention_mask, hidden_states.dtype)
+        attention_mask = AttentionMaskConverter()._expand_mask(attention_mask, hidden_states.dtype)
+        # attention_mask = _expand_mask(attention_mask, hidden_states.dtype)
 
     encoder_outputs = self.encoder(
         inputs_embeds=hidden_states,
@@ -892,11 +882,8 @@ def main(args):
     ## loading and setting reference encoder 
     print(f'loading and setting reference encoder')
     use_reference_encoder = True if args.use_reference_encoder else False
-    print(f"use_reference_encoder: {use_reference_encoder}")
     if use_reference_encoder:
         reference_encoder = AppearanceEncoderModel.from_pretrained(ref_encoder_addition_kwargs['pretrained_model_path'], subfolder="unet")
-
-    
 
     # Adding a modifier token which is optimized ####
     # Code taken from https://github.com/huggingface/diffusers/blob/main/examples/textual_inversion/textual_inversion.py
