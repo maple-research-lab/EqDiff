@@ -631,7 +631,6 @@ def inj_forward_text(
     r_input_ids = r_input_ids.view(-1, input_shape[-1])
 
     inputs_embeds = self.embeddings.token_embedding(r_input_ids)
-    #print(f'inputs_embeds:{inputs_embeds.sum([2])}')
     new_inputs_embeds = inputs_embeds.clone()
     if inj_embedding is not None:
         emb_length = inj_embedding.shape[1]
@@ -640,7 +639,6 @@ def inj_forward_text(
                 lll = new_inputs_embeds[bsz, idx+emb_length:].shape[0]
                 new_inputs_embeds[bsz, idx+emb_length:] = inputs_embeds[bsz, idx+1:idx+1+lll]
                 new_inputs_embeds[bsz, idx:idx+emb_length] = inj_embedding[bsz]
-        #print(f'inj_embedding:{inj_embedding.sum([2])}, new_inputs_embeds:{new_inputs_embeds.sum([2])}')
 
     hidden_states = self.embeddings(input_ids=r_input_ids, position_ids=position_ids, inputs_embeds=new_inputs_embeds)
 
@@ -1162,21 +1160,6 @@ def main(args):
                 cross_attention_controller = CrossAttentionControl(unet, fusion_blocks="full")
 
             if global_step == args.phase1_train_steps:
-                # Save the custom diffusion layers of Phase1
-                # accelerator.wait_for_everyone()
-                # if accelerator.is_main_process:
-                #     output_dir_phase1 = os.path.join(args.output_dir, 'phase1')
-                #     os.makedirs(output_dir_phase1, exist_ok=True)
-                #     pipeline = EQDIFFPipeline.from_pretrained(
-                #                 args.pretrained_model_name_or_path,
-                #                 vae=vae, 
-                #                 text_encoder=accelerator.unwrap_model(text_encoder), 
-                #                 tokenizer=tokenizer, 
-                #                 unet=accelerator.unwrap_model(unet), 
-                #                 reference_encoder=reference_encoder if use_reference_encoder and phase3_training else None, 
-                #             )
-                #     pipeline.save_pretrained(output_dir_phase1)
-
                 logger.info("Start Phase 2 training")
                 # Only train key, value projection layers if freeze_model = 'crossattn_kv' else train all params in the cross attention layer
                 
@@ -1244,8 +1227,6 @@ def main(args):
                 else:
                     parameters_to_optimize = [custom_diffusion_layers.parameters()]
                 
-                # params = [{"params": text_encoder.get_input_embeddings().parameters(), "lr": args.initial_learning_rate},
-                #           {"params": custom_diffusion_layers.parameters(), "lr": args.learning_rate}]
                 optimizer = optimizer_class(
                     itertools.chain(*parameters_to_optimize),
                     lr=args.learning_rate,
@@ -1268,23 +1249,7 @@ def main(args):
                     custom_diffusion_layers, optimizer, lr_scheduler
                 )
 
-            if (global_step == args.phase1_train_steps + args.phase2_train_steps) and phase3_training:
-                # Save the custom diffusion layers of Phase2
-                # accelerator.wait_for_everyone()
-                # if accelerator.is_main_process:
-                #     output_dir_phase2 = os.path.join(args.output_dir, 'phase2')
-                #     os.makedirs(output_dir_phase2, exist_ok=True)
-                #     pipeline = EQDIFFPipeline.from_pretrained(
-                #                 args.pretrained_model_name_or_path,
-                #                 vae=vae, 
-                #                 text_encoder=accelerator.unwrap_model(text_encoder), 
-                #                 tokenizer=tokenizer, 
-                #                 unet=accelerator.unwrap_model(unet), 
-                #                 reference_encoder=reference_encoder if use_reference_encoder and phase3_training else None, 
-                #             )
-                #     pipeline.save_pretrained(output_dir_phase2)
-                #     accelerator.unwrap_model(unet).to(torch.float32).save_attn_procs(output_dir_phase2, safe_serialization=False)
-                    
+            if (global_step == args.phase1_train_steps + args.phase2_train_steps) and phase3_training:           
                 logger.info("Start Phase 3 training")
                 # Only train key, value projection layers if freeze_model = 'crossattn_kv' else train all params in the cross attention layer
                 
@@ -1373,26 +1338,15 @@ def main(args):
 
                 unet.set_attn_processor(custom_diffusion_attn_procs)
                 custom_diffusion_layers = AttnProcsLayers(unet.attn_processors)
-                # print(unet.attn_processors)
                 accelerator.register_for_checkpointing(custom_diffusion_layers)
 
 
                 # freeze the parameters of text_embeddings and text_encoder
-                # freeze_params(text_encoder.get_input_embeddings().parameters())
                 for name, processor in unet.attn_processors.items():
                     # print(name, processor)
                     if name.endswith("attn2.processor"):# cross attention
                         for name_p, param in processor.named_parameters():
                             param.requires_grad = False 
-
-                # print trainable modules in unet
-                # trainable_params_name = []
-                # for name_m, module in unet.named_modules():
-                #     for name_p, param in module.named_parameters():
-                #         if param.requires_grad:
-                #             trainable_params_name.append(f"{name_m}.{name_p}")
-                # print(f'trainable_params_name in unet:{trainable_params_name}')
-
                     
                 del optimizer 
                 if args.modifier_token is not None:
@@ -1401,8 +1355,6 @@ def main(args):
                 else:
                     parameters_to_optimize = [custom_diffusion_layers.parameters()]
 
-                # params = [{"params": text_encoder.get_input_embeddings().parameters(), "lr": args.initial_learning_rate},
-                #           {"params": custom_diffusion_layers.parameters(), "lr": args.phase3_learning_rate}]
                 optimizer = optimizer_class(
                     itertools.chain(*parameters_to_optimize),
                     lr=args.phase3_learning_rate,
@@ -1425,50 +1377,20 @@ def main(args):
                     custom_diffusion_layers, optimizer, lr_scheduler
                 )
 
-                # # print trainable modules in unet
-                # trainable_params_name = []
-                # for name_m, module in unet.named_modules():
-                #     for name_p, param in module.named_parameters():
-                #         if param.requires_grad:
-                #             trainable_params_name.append(f"{name_m}.{name_p}")
-                # print(f'trainable_params_name in unet:{trainable_params_name}')
-
             if (global_step == args.phase1_train_steps + args.phase2_train_steps + args.phase3_train_steps):
                 # Save the custom diffusion layers of Text-Embedding and 
                 accelerator.wait_for_everyone()
-                # if accelerator.is_main_process:
-                #     output_dir_phase3 = os.path.join(args.output_dir, 'phase3')
-                #     os.makedirs(output_dir_phase3, exist_ok=True)
-                #     pipeline = EQDIFFPipeline.from_pretrained(
-                #                 args.pretrained_model_name_or_path,
-                #                 vae=vae, 
-                #                 text_encoder=accelerator.unwrap_model(text_encoder), 
-                #                 tokenizer=tokenizer, 
-                #                 unet=accelerator.unwrap_model(unet), 
-                #                 reference_encoder=None,
-                #             )
-                #     pipeline.save_pretrained(output_dir_phase3)
-                #     accelerator.unwrap_model(unet).to(torch.float32).save_attn_procs(output_dir_phase3, safe_serialization=False)
 
                 logger.info("Start Phase 4 training")
                 # Only train key, value projection layers if freeze_model = 'crossattn_kv' else train all params in the cross attention layer
                 
                 # freeze the parameters of text_embeddings and text_encoder
-                # freeze_params(text_encoder.get_input_embeddings().parameters())
                 for name, processor in unet.attn_processors.items():
                     # print(name, processor)
                     if name.endswith("attn2.processor"):# cross attention
                         for name_p, param in processor.named_parameters():
                             if "custom_diffusion" in name_p:
                                 param.requires_grad = True 
-                # print trainable modules in unet
-                # trainable_params_name = []
-                # for name_m, module in unet.named_modules():
-                #     for name_p, param in module.named_parameters():
-                #         if param.requires_grad:
-                #             trainable_params_name.append(f"{name_m}.{name_p}")
-                # print(f'trainable_params_name in unet:{trainable_params_name}')
-
                     
                 del optimizer 
                 if args.modifier_token is not None:
@@ -1545,7 +1467,6 @@ def main(args):
                                             flag_to_combine,
                                             args.high_freq_percentage,
                                             args.low_freq_percentage)
-                    # pixel_values = fft_filtering(batch["pixel_values"], filter_type='highpass', cutoff_freq=args.high_freq_percentage)
                 else:
                     pixel_values = batch["pixel_values"]
                 latents = vae.encode(pixel_values.to(dtype=weight_dtype)).latent_dist.sample()
@@ -1563,24 +1484,13 @@ def main(args):
                 # Add noise to the latents according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
-                # masks =  []
                 if mask_noise:
                     dilate_iters = args.dilate_iters
                     dilated_mask = batch["instance_mask"]
-                    # msk = repeat(dilated_mask[2], 'c h w -> (f c) h w', f=3)
-                    # img = Image.fromarray((msk*255).permute(1,2,0).cpu().numpy().astype(np.uint8))
-                    # masks.append(img)
                     for i, _ in enumerate(range(dilate_iters)):
                         dilated_mask = dilate(dilated_mask, ksize=5)
-                        # msk = repeat(dilated_mask[2], 'c h w -> (f c) h w', f=3)
-                        # img = Image.fromarray((msk*255).permute(1,2,0).cpu().numpy().astype(np.uint8))
-                        # masks.append(img)
-                    #dilated_mask = batch["mask"]
-                    #print(f'noisy_latents_ori:{noisy_latents.sum([1,2,3])}, dilated_mask:{dilated_mask.shape},{dilated_mask.sum([1,2,3])}')
                     if not args.mask_noise_only_loss:# only apply mask noise in the loss calculation
                         noisy_latents = dilated_mask*noisy_latents + (1-dilated_mask)*latents
-                        #print(f'noisy_latents:{noisy_latents.sum([1,2,3])}')
-                        #export_to_gif(masks, f'./masks/{global_step}_2.gif')
 
                 # Get the text embedding for conditioning
                 if not args.text_inj:
