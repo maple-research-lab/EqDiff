@@ -10,26 +10,6 @@ validation_data:
   num_inference_steps: 50
   guidance_scale: 12.5
 
-text_dds_list:
-  - text_source: 'photo of a <new2> can'
-    text_source_prior: 'photo of a can'
-    text_target: 'photo of a <new2> can'
-    text_target_prior: 'photo of a can' 
-  # - text_source: 'Sketch of a <new2> can'
-  #   text_source_prior: 'Sketch of a can'
-  #   text_target: 'photo of a <new2> can'
-  #   text_target_prior: 'photo of a can' 
-  # - text_source: 'Oil painting of a <new2> can'
-  #   text_source_prior: 'Oil painting of a can'
-  #   text_target: 'photo of a <new2> can'
-  #   text_target_prior: 'photo of a can'
-  # - text_source: 'photo of a <new2> can'
-  #   text_source_prior: 'photo of a can'
-  #   text_target: 'photo of a <new2> can'
-  #   text_target_prior: 'photo of a can' 
-
-
-
 num_objects_given: 1 #number of composition objects
 validation_num_objects: 1 #number of composition objects in validation
 unet_additional_kwargs:

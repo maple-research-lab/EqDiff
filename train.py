@@ -1,17 +1,3 @@
-#!/usr/bin/env python
-# coding=utf-8
-# Copyright 2023 Custom Diffusion authors and the HuggingFace Inc. team. All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
 import argparse
 import hashlib
 import itertools
@@ -78,20 +64,18 @@ if version.parse(transformers.__version__) > version.parse('4.32.0'):
 else:
     from transformers.models.clip.modeling_clip import _expand_mask
 
+from eqdiff.pipelines.pipeline_eqdiff_multi_inj_refnew_difftextemb2 import EQDIFFPipeline
 from eqdiff.models import ptp_utils
 from eqdiff.models.ptp_utils import AttentionStore
-
 from eqdiff.models.unet import UNet3DConditionModel
-from eqdiff.util import save_videos_grid, ddim_inversion, load_weights_into_unet
 from eqdiff.models.reference_encoder import AppearanceEncoderModel
-from eqdiff.models.controlnet import ControlNetModel
 from eqdiff.models.mutual_self_attention_refnew import ReferenceAttentionControl
-from eqdiff.pipelines.pipeline_eqdiff_multi_inj_refnew_difftextemb2 import EQDIFFPipeline
 from eqdiff.models.attention_processor_custom import CustomDiffusionXFormersAttnProcessor, CustomDiffusionAttnProcessor
 from eqdiff.models.align_hook import AlignLossHook, MasksHook
 from eqdiff.models.self_attention_loss import SALoss
 from eqdiff.models.cross_attention_control import CrossAttentionControl
 from eqdiff.tools import *
+from eqdiff.util import save_videos_grid, ddim_inversion, load_weights_into_unet
 
 from dataloader.reference_diffusion_dataset import collate_fn, PromptDataset, ReferenceDiffusionDataset
 

@@ -66,10 +66,10 @@ def parse_args(input_args=None):
     parser = argparse.ArgumentParser(description="Residual Reference Attention testing script.")
     parser.add_argument("--DATASET_NAME", type=str, default="cat_toy")
     parser.add_argument("--PROMPT_NAME", type=str, default="cat toy")
-    parser.add_argument("--PROMPTS_FILE", type=str, default="/fangxueji/reference_diffusion/prompts/base_prompt.txt")
+    parser.add_argument("--PROMPTS_FILE", type=str, default="./prompts/base_prompt.txt")
     parser.add_argument("--PATH_PREFIX", type=str, default="three_stage_wi_attn_loss_trainbothfirstref_phase1step100_phase2step100_phase3step400_phase4step200_woflip_caloss1e-1_scaleinitlr_mix+grayv5_10_0.5_wisa_wimask_")
     parser.add_argument("--MODE", type=str, default="style")
-    parser.add_argument("--SD_PATH", type=str, default="/fangxueji/PreTrainedWeights/stable-diffusion-v1-4")
+    parser.add_argument("--SD_PATH", type=str, default="/path/to/stable-diffusion-v1-4")
     parser.add_argument("--config", type=str, default="./configs/custom_diffusion.yaml")
     parser.add_argument(
         "--modifier_token",

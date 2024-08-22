@@ -1,7 +1,7 @@
 # ___***Equilibrated Diffusion:Frequency-aware Textual Embedding for Equilibrated Image Customization [ACMMM2024 Oral]***___
 
 <a href='https://maple-aigc.github.io/EqDiff/'><img src='https://img.shields.io/badge/Project-Page-green'></a> 
-<a href='https://openreview.net/forum?id=ERuypCHYvX'><img src='https://img.shields.io/badge/Paper-Accepted-Green
+<a href='https://openreview.net/pdf?id=ERuypCHYvX'><img src='https://img.shields.io/badge/Paper-Accepted-Green
 '></a> 
 
 
@@ -25,17 +25,23 @@ Experimental results demonstrate that Equilibrated Diffusion surpasses other com
 ## Release
 - [2024/8/21] 🔥 We release the training and inference code.
 
+## Results
+Our customization results are based on stable-diffusion-v1-5 model including stylized and non-stylized prompts.
+![results](assets/figs/teaser_whitebg.png)
 
-## Installation
+## Getting Started
 
 ```
 # install diffusers
 pip install diffusers==0.21.4
-
+# install other dependencies
+pip install -r requirements.txt
+# Download the stable-diffusion-v1-5 
+git clone https://huggingface.co/runwayml/stable-diffusion-v1-5
 ```
 
 ## How to Train
-For training, you should install [accelerate](https://github.com/huggingface/accelerate) and prepare your own 3-4 images of customization subjects into a folder.
+For training, you should install [accelerate](https://github.com/huggingface/accelerate) and prepare your own 3 to 4 images of customization subjects into a folder.
 
 ```
 bash scripts/train.sh
