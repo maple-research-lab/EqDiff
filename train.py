@@ -1279,8 +1279,6 @@ def main(args):
                         
                     layer_name = name.split(".processor")[0]
                     
-                    # print(f'phase3:', [k for k in st.keys() if 'custom' in k ])
-                    # print(name, layer_name, cross_attention_dim is None)
                     if cross_attention_dim is not None:
                         # cross attention module
                         weights = {
@@ -1329,7 +1327,6 @@ def main(args):
                             custom_diffusion_attn_procs[name].load_state_dict(weights_res)
                     att_count += 1
                 controller.num_att_layers = 12 #4+2+6
-                print(f'controller.num_att_layers:{controller.num_att_layers}, att_count:{att_count}')
                 if ref_encoder_addition_kwargs['fusion_blocks'] == 'midup':
                     controller_res.num_att_layers = (1+3)# since only self-attention and mid_up (reference encoder setting) and only < res_max*res_max
                 else:
@@ -1350,7 +1347,6 @@ def main(args):
                     
                 del optimizer 
                 if args.modifier_token is not None:
-                    #parameters_to_optimize = [text_encoder.get_input_embeddings().parameters(), custom_diffusion_layers.parameters()]
                     parameters_to_optimize = [freq_embeddings.parameters(), custom_diffusion_layers.parameters()]
                 else:
                     parameters_to_optimize = [custom_diffusion_layers.parameters()]
@@ -1358,7 +1354,6 @@ def main(args):
                 optimizer = optimizer_class(
                     itertools.chain(*parameters_to_optimize),
                     lr=args.phase3_learning_rate,
-                    # params = params,
                     betas=(args.adam_beta1, args.adam_beta2),
                     weight_decay=args.adam_weight_decay,
                     eps=args.adam_epsilon,
@@ -1519,15 +1514,9 @@ def main(args):
                     ref_encoder_text_embeddings = text_encoder({'input_ids':ref_encoder_text_ids})[0]
                     latents_ref = vae.encode(pixel_values_ref).latent_dist.sample()
                     latents_ref = latents_ref * vae.config.scaling_factor
-                    #assert num_objects_given == latents.shape[2]# 
-                    #print(f'latents:{latents.shape}, latents_ref:{latents_ref.shape}, timesteps:{timesteps.shape}, ref_encoder_text_embeddings:{ref_encoder_text_embeddings.shape}')
-                    if True:
-                        timesteps_ref = timesteps_ref.repeat_interleave(num_objects_given, 0)
-                        noisy_latents_ref = noise_scheduler.add_noise(latents_ref, noise, timesteps_ref)
-                        reference_encoder(torch.cat([noisy_latents_ref]*2, 0), torch.cat([timesteps_ref]*2, 0), torch.cat([ref_encoder_text_embeddings]*2, 0), return_dict=False)
-                    else:
-                        timesteps_ref = timesteps.repeat_interleave(num_objects_given, 0)
-                        reference_encoder(torch.cat([latents_ref]*2, 0), torch.cat([timesteps_ref]*2, 0), torch.cat([ref_encoder_text_embeddings]*2, 0), return_dict=False)
+                    timesteps_ref = timesteps_ref.repeat_interleave(num_objects_given, 0)
+                    noisy_latents_ref = noise_scheduler.add_noise(latents_ref, noise, timesteps_ref)
+                    reference_encoder(torch.cat([noisy_latents_ref]*2, 0), torch.cat([timesteps_ref]*2, 0), torch.cat([ref_encoder_text_embeddings]*2, 0), return_dict=False)
                     reference_control_reader.update(reference_control_writer)
 
                 if separate_v:
@@ -1576,27 +1565,6 @@ def main(args):
                 
                 logs = {}
 
-                # logging the training result
-                if global_step % args.training_log_steps == 0:
-                    if accelerator.is_main_process:
-                        for tracker in accelerator.trackers:
-                            if tracker.name == "tensorboard":
-                                #rearrange(decode_latents(vae, model_pred), )
-                                #np_images = np.concatenate([np.asarray(img) for img in model_pred])#(b,3,h,w)
-                                input_image = np.concatenate([np.asarray((img+1)/2) for img in [pixel_values.clone().cpu().squeeze(1)]])#(b,3,h,w)
-                                ref_image = np.concatenate([np.asarray((img+1)/2) for img in [batch["pixel_values_ref"].clone().cpu().squeeze(1)]])#(b,3,h,w)
-                                mask = 255 * np.concatenate([np.asarray(img) for img in [batch["mask"].clone().cpu().repeat(1,3,1,1)]])#(b,1,h,w)
-                                instance_mask = 255 * np.concatenate([np.asarray(img) for img in [batch["instance_mask"].clone().cpu().repeat(1,3,1,1)]])#(b,1,h,w)
-                                if mask_noise:
-                                    dilated_mask_log = 255 * np.concatenate([np.asarray(img) for img in [dilated_mask.clone().cpu().repeat(1,3,1,1)]])#(b,1,h,w)
-                                    tracker.writer.add_images("train_dilatedmask", dilated_mask_log, global_step, dataformats="NCHW")
-                                mask_ref = 255 *  np.concatenate([np.asarray(img) for img in [batch["mask_ref"].clone().cpu().repeat(1,3,1,1)]])#(b,1,h,w)
-                                tracker.writer.add_images("train_imagemask", mask, global_step, dataformats="NCHW")
-                                tracker.writer.add_images("train_instancemask", instance_mask, global_step, dataformats="NCHW")
-                                tracker.writer.add_images("train_mask_ref", mask_ref, global_step, dataformats="NCHW")
-                                tracker.writer.add_images("train_input_image", input_image, global_step, dataformats="NCHW")
-                                tracker.writer.add_images("train_ref_image", ref_image, global_step, dataformats="NCHW")
-
                 # Cross Attention Loss
                 if (args.lambda_attention != 0 or args.lambda_sattention != 0) and phase3_training:
                     attn_loss = 0
@@ -1609,11 +1577,9 @@ def main(args):
                             agg_attn = aggregate_attention(controller, res=res_max, from_where=("up", "down"), is_cross=True, select=batch_idx, batch_size=args.train_batch_size)
 
                             asset_idx = None
-                            #print(tokenizer.decode(batch["input_ids"][curr_cond_batch_idx], skip_special_tokens=True))
                             for token_id in modifier_token_id:
                                 if token_id in batch["input_ids"][curr_cond_batch_idx]:
                                     asset_idx = (batch["input_ids"][curr_cond_batch_idx] == token_id).nonzero().item()
-                                    #print(tokenizer.decode(token_id, skip_special_tokens=True), tokenizer.decode(batch["input_ids"][curr_cond_batch_idx], skip_special_tokens=True), asset_idx if asset_idx is not None else -1)
                             assert asset_idx is not None
 
                             asset_attn_mask = agg_attn[..., asset_idx]
@@ -1636,18 +1602,6 @@ def main(args):
                                 ]
                                 last_sentence = tokenizer.decode(last_sentence)
 
-                                save_cross_attention_vis(
-                                    tokenizer,
-                                    last_sentence,
-                                    attention_maps=agg_attn.detach().cpu(),
-                                    path=os.path.join(
-                                        img_logs_path, f"attn_{global_step:05}_step.jpg"
-                                    ),
-                                )
-                                os.makedirs(os.path.join(img_logs_path,  'gt_mask'), exist_ok=True)
-                                os.makedirs(os.path.join(img_logs_path,  'cross_attn_mask'), exist_ok=True)
-                                torchvision.utils.save_image(batch["instance_mask"][curr_cond_batch_idx].unsqueeze(0),  os.path.join(img_logs_path,  'gt_mask', f"gt_mask_{global_step}_{batch_idx}.png"))
-                                torchvision.utils.save_image(asset_attn_mask.unsqueeze(0).unsqueeze(0),  os.path.join(img_logs_path, 'cross_attn_mask', f"cross_attn_mask_{global_step}_{batch_idx}.png"))
                             attn_loss = args.lambda_attention * (
                                 attn_loss / args.train_batch_size
                             )
@@ -1656,7 +1610,12 @@ def main(args):
 
                         if args.lambda_sattention != 0:
                             # res attention
-                            agg_res_attn = aggregate_attention(controller_res, res=res_max, from_where=("mid", "up"), is_cross=False, select=batch_idx, batch_size=args.train_batch_size)
+                            agg_res_attn = aggregate_attention(controller_res, 
+                                                                res=res_max,
+                                                                from_where=("mid", "up"), 
+                                                                is_cross=False, 
+                                                                select=batch_idx, 
+                                                                batch_size=args.train_batch_size)
 
                             sattn_loss += saloss(
                                 agg_res_attn.float(), #[h, w, num_pixels_ref]
@@ -1671,26 +1630,7 @@ def main(args):
                             # resattn logs
                             controller_res.cur_step = 1
 
-                            os.makedirs(os.path.join(img_logs_path,  'input_ref'), exist_ok=True)
-                            os.makedirs(os.path.join(img_logs_path,  'input_ref_mask'), exist_ok=True)
-                            os.makedirs(os.path.join(img_logs_path,  'sattn'), exist_ok=True)
-
-                            if global_step % args.training_log_steps == 0:
-                                save_self_attention_vis_on_pixel(
-                                    agg_res_attn.detach().cpu(),
-                                    batch["pixel_values"][curr_cond_batch_idx].detach().cpu(),
-                                    batch["pixel_values_ref"][curr_cond_batch_idx].detach().cpu(),
-                                    path=os.path.join(
-                                        img_logs_path, "sattn", f"self2res_attn_{global_step:05}_step.jpg"
-                                    )
-                                )
-                                pixels = torch.cat([batch["pixel_values"][curr_cond_batch_idx].unsqueeze(0), batch["pixel_values_ref"][curr_cond_batch_idx]], dim=0)#(num_ref+1, c, h, w)
-                                masks = torch.cat([batch["instance_mask"][curr_cond_batch_idx], batch["mask_ref"][curr_cond_batch_idx]], dim=0).unsqueeze(1)#(num_ref+1, 1, h, w)
-                                torchvision.utils.save_image((pixels+1)/2, os.path.join(img_logs_path, "input_ref", f"input_ref_{global_step:05}_step.jpg"))
-                                torchvision.utils.save_image(masks, os.path.join(img_logs_path, "input_ref_mask", f"mask_input_ref_{global_step:05}_step.jpg"))
-                            sattn_loss = args.lambda_sattention * (
-                                sattn_loss / args.train_batch_size
-                            )
+                            sattn_loss = args.lambda_sattention * (sattn_loss / args.train_batch_size)
                             logs["sattn_loss"] = sattn_loss.detach().item()
                             loss += sattn_loss    
                     
@@ -1703,29 +1643,6 @@ def main(args):
 
                     controller_res.attention_store = {}
                     controller_res.cur_step = 0
-
-                # # Zero out the gradients for all token embeddings except the newly added
-                # # embeddings for the concept, as we only want to optimize the concept embeddings
-                # if args.modifier_token is not None:
-                #     if accelerator.num_processes > 1:
-                #         grads_text_encoder = text_encoder.module.get_input_embeddings().weight.grad
-                #     else:
-                #         grads_text_encoder = text_encoder.get_input_embeddings().weight.grad
-                #     # Get the index for tokens that we want to zero the grads for
-                #     index_grads_to_zero = torch.arange(len(tokenizer)) != modifier_token_id[0]
-                #     for i in range(len(modifier_token_id[1:])):
-                #         index_grads_to_zero = index_grads_to_zero & (
-                #             torch.arange(len(tokenizer)) != modifier_token_id[i+1]
-                #         )
-                    
-                #     if use_gray:
-                #         grads_text_encoder.data[index_grads_to_zero, :int((1 - args.gray_rate)*768)] = grads_text_encoder.data[
-                #             index_grads_to_zero, : int((1 - args.gray_rate)*768)
-                #         ].fill_(0)
-                #     else:
-                #         grads_text_encoder.data[index_grads_to_zero, : ] = grads_text_encoder.data[
-                #             index_grads_to_zero, :
-                #         ].fill_(0)
 
                 if accelerator.sync_gradients:
                     iterables_to_grad_clip = []
@@ -1751,11 +1668,7 @@ def main(args):
                         accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[
                             index_no_updates
                         ] = orig_embeds_params[index_no_updates]
-                        # if use_gray and args.gray_rate != 0.:
-                        #     accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[
-                        #         -1, :int((1 - args.gray_rate)*768)
-                        #     ] = cur_embeds_params[-1, :int((1 - args.gray_rate)*768)]
-            
+                        
                 if use_reference_encoder and phase3_training:
                     reference_control_writer.clear()
                     reference_control_reader.clear()
@@ -1823,13 +1736,9 @@ def main(args):
                         f" {args.validation_prompt}."
                     )
 
-                    for k,v in mask_hook.step_store.items():
-                        print(f'before attention cal:{k}:{len(v)}')
                     if mask_hook is not None:
                         mask_hook.reset()
                         print(f'reset mask_hook')
-                    for k,v in mask_hook.step_store.items():
-                        print(f'after attention cal:{k}:{len(v)}')
 
                     # create pipeline
                     pipeline = EQDIFFPipeline(
@@ -1837,7 +1746,6 @@ def main(args):
                         text_encoder=accelerator.unwrap_model(text_encoder), 
                         tokenizer=tokenizer, 
                         unet=accelerator.unwrap_model(unet), 
-                        #scheduler=DPMSolverMultistepScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler"),
                         scheduler=DDIMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler"),
                         reference_encoder=accelerator.unwrap_model(reference_encoder) if use_reference_encoder and phase3_training else None, 
                         controlnet=None,
@@ -1866,70 +1774,16 @@ def main(args):
                             images_ref.append(pipeline_output.image_ref)
                         ref_image_tensors.append(pipeline_output.ref_image_tensor)
 
-                        # for k,v in mask_hook.step_store.items():
-                        #     print(f'attention cal:{k}:{len(v)}')
-
-                        if mask_hook is not None:
-                            resize_and_average = lambda tensors_list, h1, w1: torch.stack([torch.nn.functional.interpolate(x, size=(h1, w1), \
-                                mode='bilinear', align_corners=False) for x in tensors_list if x.shape[0]==2]).mean(dim=0)
-                            for k, v in mask_hook.step_store.items():
-                                if len(v) > 0:
-                                    # for vi in v:
-                                    #     print(vi.shape)
-                                    mask_save = resize_and_average(v, 128, 128)
-                                    mask_path = os.path.join(args.output_dir, 'mask_validation')
-                                    os.makedirs(mask_path, exist_ok=True)
-                                    save_name = os.path.join(mask_path, f'{global_step:04}_{k}.png')
-                                    save_image(mask_save, save_name)
-
-                    # Attention Map visualization
                     if use_reference_encoder and phase3_training:
-                        controller.cur_step = 1
-                        full_agg_attn = aggregate_attention(controller, 
-                                res=res_max, from_where=("up", "down"), is_cross=True, select=0, batch_size=1
-                            )
-                        save_cross_attention_vis(
-                            tokenizer,
-                            args.validation_prompt,
-                            attention_maps=full_agg_attn.detach().cpu(),
-                            path=os.path.join(
-                                args.output_dir, f"{global_step:05}_full_attn.jpg"
-                            ),
-                        )
                         controller.cur_step = 0
                         controller.attention_store = {}
-
-                        # for res attention visualization
-                        controller_res.cur_step = 1
-                        full_agg_res_attn = aggregate_attention(controller_res,
-                                res=res_max, from_where=("up", "mid"), is_cross=False, select=0, batch_size=1
-                            )
-                        save_self_attention_vis_on_pixel(
-                                full_agg_res_attn.detach().cpu(),
-                                images[-1][0].detach().cpu(),
-                                ref_image_tensors[-1].detach().cpu(),
-                                path=os.path.join(
-                                    args.output_dir, f"{global_step:05}_full_res_attn.jpg"
-                                ),
-                        )
-                        # save_self_attention_vis(
-                        #     attention_maps=full_agg_res_attn.detach().cpu(),
-                        #     path=os.path.join(
-                        #         args.output_dir, f"{global_step:05}_full_res_attn.jpg"
-                        #     ),
-                        # )
                         controller_res.cur_step = 0
                         controller_res.attention_store = {}
 
                     for tracker in accelerator.trackers:
                         if tracker.name == "tensorboard":
                             np_images = np.concatenate([np.asarray(img) for img in images])#(b,3,h,w)
-                            ref_images = np.concatenate([np.asarray(img.clone().cpu()) for img in ref_image_tensors])#(b,3,h,w)
                             tracker.writer.add_images("validation", np_images, global_step, dataformats="NCHW")
-                            tracker.writer.add_images("validation_ref", ref_images, global_step, dataformats="NCHW")
-                            if use_reference_encoder and phase3_training:
-                                np_images_ref = np.concatenate([np.asarray(img) for img in images_ref])#(b,3,h,w)
-                                tracker.writer.add_images("validation_ref_style", np_images_ref, global_step, dataformats="NCHW")
                         if tracker.name == "wandb":
                             tracker.log(
                                 {
@@ -1969,24 +1823,8 @@ def main(args):
                     unet=accelerator.unwrap_model(unet), 
                     reference_encoder=reference_encoder if (use_reference_encoder and phase3_training) else None, 
                 )
-        print(f'(use_reference_encoder and phase3_training):{(use_reference_encoder and phase3_training)}')
         pipeline.save_pretrained(args.output_dir)
-
         accelerator.unwrap_model(unet).to(torch.float32).save_attn_procs(args.output_dir, safe_serialization=False)
-
-        # save woref model
-        output_dir_woref = os.path.join(args.output_dir, 'woref')
-        os.makedirs(output_dir_woref, exist_ok=True)
-        pipeline = EQDIFFPipeline.from_pretrained(
-                    args.pretrained_model_name_or_path,
-                    vae=vae, 
-                    text_encoder=accelerator.unwrap_model(text_encoder), 
-                    tokenizer=tokenizer, 
-                    unet=accelerator.unwrap_model(unet), 
-                    reference_encoder=None, 
-                )
-        pipeline.save_pretrained(output_dir_woref)
-        accelerator.unwrap_model(unet).to(torch.float32).save_attn_procs(output_dir_woref, safe_serialization=False)
         save_new_embed(
             text_encoder,
             modifier_token_id,
@@ -2013,9 +1851,6 @@ def main(args):
                 "pytorch_custom_diffusion_weights.bin"
             )
             pipeline.unet.load_attn_procs(args.output_dir, weight_name=weight_name, mask_hook=mask_hook)
-            # for token in args.modifier_token:
-            #     token_weight_name =  f"{token}.bin"
-            #     pipeline.load_textual_inversion(args.output_dir, weight_name=token_weight_name)
 
             loaded_freq_embeddings = LearnableEmbeddings(2, embedding_dim)
             loaded_freq_embeddings.load_state_dict(torch.load(os.path.join(args.output_dir, 'freq_embeddings.pth')))
@@ -2057,9 +1892,6 @@ def main(args):
 
 
 def get_average_attention(controller):
-        # for k, v in controller.attention_store.items():
-        #     for vi in v:
-        #         print(f'{k}:{vi.shape},{len(v)}')
         average_attention = {
             key: [
                 item / controller.cur_step
@@ -2081,155 +1913,10 @@ def aggregate_attention(
                 cross_maps = item.reshape(
                     batch_size, -1, res, res, item.shape[-1]
                 )[select]
-                #print(f'cross_maps:{cross_maps.sum([3])}')
                 out.append(cross_maps)
     out = torch.cat(out, dim=0)
     out = out.sum(0) / out.shape[0]
-    #print(f'out:{out.sum(2)}')
     return out
-
-@torch.no_grad()
-def save_cross_attention_vis(tokenizer, prompt, attention_maps, path):
-    tokens = tokenizer.encode(prompt)
-    images = []
-    for i in range(len(tokens)):
-        image = attention_maps[:, :, i]
-        image = 255 * image / image.max()
-        image = image.unsqueeze(-1).expand(*image.shape, 3)
-        image = image.numpy().astype(np.uint8)
-        image = np.array(Image.fromarray(image).resize((256, 256)))
-        image = ptp_utils.text_under_image(
-            image, tokenizer.decode(int(tokens[i]))
-        )
-        images.append(image)
-    vis = ptp_utils.view_images(np.stack(images, axis=0))
-    vis.save(path)
-
-@torch.no_grad()
-def save_self_attention_vis(attention_maps, path):
-    attn_maps = attention_maps
-    # attention_maps: [h, w, num_pixels_ref]
-    num_vis = 16
-    h, w, l = attention_maps.shape
-    num_ref = int(l//h//w)
-
-    attention_maps = attention_maps.reshape(h*w, num_ref, h, w)
-    #print(f'attention_maps_res:{attention_maps.sum([1,2,3])}')
-    #print(f'attention_maps_res:{attention_maps.var([1,2,3])}')
-    attention_maps = rearrange(attention_maps, "l n a b -> l a (n b)")
-    select_idx = (torch.arange(0, num_vis) * ((h*w-1)/num_vis)).int().tolist()
-    images = attention_maps[select_idx,...]#(num_select, h, n*w)
-    images = F.interpolate(images.unsqueeze(1), scale_factor=2, mode='bilinear')
-    T.save_image(images, path)
-
-    # vis from res perspect
-    select_idx_2 = (torch.arange(0, num_vis) * ((l-1)/num_vis)).int().tolist()
-    attn_maps_2 = attn_maps[:,:,select_idx_2].permute(2,0,1)#(num_select, h, w, )
-    attn_maps_2 = attn_maps_2 / attn_maps_2.max(dim=0, keepdim=True).values
-    images = F.interpolate(attn_maps_2.unsqueeze(1), scale_factor=2, mode='bilinear')
-    T.save_image(images, path.replace('.jpg', '_2.jpg'))
-
-@torch.no_grad()
-def save_self_attention_vis_on_pixel(attention_maps, image, image_ref, path):
-    # attention_maps: [h, w, num_pixels_ref], and num_pixels_ref = num_ref*h*w
-    # image: [c, h1, w1,]
-    # image_ref: [num_ref, c, h1, w1]
-
-    attn_maps = attention_maps
-    h, w, l = attention_maps.shape
-    num_ref = int(l // h // w)
-    hv, wv = 256, 256
-
-    
-    image_ref = F.interpolate(image_ref, (hv, wv))
-    image_ref = rearrange(image_ref, "n c h w -> c h (n w)")
-
-    attention_maps = attention_maps.reshape(h * w, num_ref, h, w)
-    attention_maps = rearrange(attention_maps, "l n a b -> l a (n b)")
-
-    # define the sampling idx
-    horizontal_step, vertical_step = 4, 4
-    base_idx = list(range(1, w, horizontal_step))
-    select_idx = []
-    for i in range(1, h, vertical_step):
-        select_idx += [idx+i*w for idx in base_idx]
-        
-
-    # # Step 1: 在image上为select_idx中的每个点绘制可变大小的边框
-    # image = F.interpolate(image.unsqueeze(0), (h, w))[0]
-    # self_wi_bbox = []
-    # for idx in select_idx:
-    #     h_idx, w_idx = divmod(idx, w)
-    #     # print(f'idx:{idx}, {h_idx}, {w_idx}')
-    #     # 定义bbox的大小（此处为示例，您可以根据需要调整）
-    #     bbox_size = 1
-        
-    #     # 使用cv2.rectangle绘制边框
-    #     image_np = TF.to_pil_image(image)
-    #     image_np = np.array(image_np).copy()
-    #     cv2.rectangle(image_np, (w_idx - bbox_size, h_idx - bbox_size), 
-    #                   (w_idx + bbox_size, h_idx + bbox_size), (255, 0, 0), 1)  # 红色边框
-
-    #     image_tensor = TF.to_tensor(image_np)
-    #     self_wi_bbox.append(image_tensor)
-    # self_wi_bbox = torch.stack(self_wi_bbox, dim=0)#[num_vis, 3, h, w]
-    # self_wi_bbox = F.interpolate(self_wi_bbox, (hv, wv), mode='bilinear')
-    # #save_image(self_wi_bbox, 'self_wi_bbox.jpg')
-
-    # Step 2: 
-    image_after = F.interpolate(image.unsqueeze(0), (hv, wv))[0]
-    X, Y = torch.meshgrid(torch.arange(1, w, horizontal_step), torch.arange(1, h, vertical_step), indexing='xy')
-    X, Y = torch.clamp(X * wv / w, 0, wv-1), torch.clamp(Y * hv / h, 0, hv-1)
-    select_idx_after = (X + Y*wv).flatten()
-    # print(select_idx_after)
-    select_idx_after = select_idx_after.to(torch.int32).tolist()
-    self_wi_bbox_after = []
-    for idx in select_idx_after:
-        h_idx, w_idx = divmod(idx, wv)
-        # print(f'idx:{idx}, {h_idx}, {w_idx}')
-        # 定义bbox的大小（此处为示例，您可以根据需要调整）
-        bbox_size = 5
-        
-        # 使用cv2.rectangle绘制边框
-        image_np = TF.to_pil_image(image_after)
-        image_np = np.array(image_np).copy()
-        # print((w_idx - bbox_size, h_idx - bbox_size), (w_idx + bbox_size, h_idx + bbox_size))
-        cv2.rectangle(image_np, (w_idx - bbox_size, h_idx - bbox_size), 
-                      (w_idx + bbox_size, h_idx + bbox_size), (255, 0, 0), 2)  # 红色边框
-
-        image_tensor = TF.to_tensor(image_np)
-        #print(image.shape)
-        self_wi_bbox_after.append(image_tensor)
-    self_wi_bbox_after = torch.stack(self_wi_bbox_after, dim=0)#[num_vis, 3, h, w]
-    self_wi_bbox_after = F.interpolate(self_wi_bbox_after, (hv, wv), mode='bilinear')
-    # save_image(self_wi_bbox_after, 'self_wi_bbox_after.jpg')
-
-    # Step 2: 处理每个select_idx对应的attention_map，并叠加在image_ref上
-    self2res_attn_vis = []
-    p = 0.3
-    for idx in select_idx:
-        h_idx, w_idx = divmod(idx, w)
-        attention_map = attention_maps[idx,...]  # [h, num_ref*w]
-        #print(f'attention_map:{attention_map.shape}')
-        
-        # 将attention_map的值映射到colormap的值
-        attention_map = attention_map/ (attention_map.max(dim=0).values.max(dim=0).values)  # 归一化到 [0, 1]
-        
-        colormap = plt.get_cmap('viridis')
-        attention_map_colormap = colormap(attention_map.numpy())[:,:,:3]  # 忽略alpha通道 [h, num_ref*w, 3]
-        attention_map_colormap = torch.from_numpy(attention_map_colormap.transpose((2, 0, 1)))  # 调整为PyTorch格式 [3, h, num_ref*w]
-
-        attention_map_colormap = rearrange(attention_map_colormap, 'c h (n w) -> n c h w', n=num_ref, w=w)
-        attention_map_colormap = F.interpolate(attention_map_colormap, (hv, wv), mode="bilinear")
-        attention_map_colormap = rearrange(attention_map_colormap, 'n c h w -> c h (n w)')
-        
-        #attention_map_colormap = F.interpolate(attention_map_colormap.unsqueeze(0), scale_factor=2, mode='bilinear')[0]# [3, h, num_ref*w]
-        self2res_attn_vis.append(image_ref*p + attention_map_colormap*(1-p))
-    self2res_attn_vis = torch.stack(self2res_attn_vis, dim=0)#(num_vis, 3, h, num_ref*w)
-
-    # Step 3: 将画红框标注和attention_map结果concat到一起并保存
-    final_visualization = torch.cat([self_wi_bbox_after, self2res_attn_vis], dim=3)
-    save_image(final_visualization, path)
 
 if __name__ == "__main__":
     args = parse_args()
